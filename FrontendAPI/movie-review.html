@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Movie Review App</title>
+
+<style>
+/* RESET */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* BASE */
+body {
+  background-color: #131720;
+  font-family: Arial, sans-serif;
+  color: white;
+}
+
+/* NAVBAR */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  flex-wrap: wrap;
+}
+
+.navbar a {
+  color: white;
+  text-decoration: none;
+  font-size: 1.3rem;
+  font-weight: bold;
+  transition: all;
+}
+
+.navbar a:hover{
+  transform: rotate3d(),translateX(5px),scale(1.03);
+
+}
+
+/* SEARCH */
+.search-container {
+  margin-top: 8px;
+}
+
+form {
+  background-color: #151f30;
+  width: 260px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+}
+
+input {
+  all: unset;
+  width: 100%;
+  padding: 10px;
+  color: white;
+  font-size: 15px;
+}
+
+/* MOVIE GRID */
+#section {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+
+/* MOVIE CARD */
+.card {
+  background-color: #151f30;
+  border-radius: 16px;
+  padding: 10px;
+  text-align: center;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.card:hover {
+  transform: translateX(5px) scale(1.03);
+  box-shadow: 0 10px 20px rgba(146, 20, 20, 0.5);
+}
+
+.thumbnail {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 12px;
+  cursor:pointer;
+}
+
+.card h3 {
+  margin-top: 8px;
+  font-size: 1rem;
+  color: antiquewhite;
+}
+
+/* REVIEW PANEL */
+#panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 420px;
+  max-width: 100%;
+  background-color: #0f1624;
+  padding: 16px;
+  overflow-y: auto;
+  display: none;
+  box-shadow: -5px 0 15px rgba(0,0,0,0.6);
+  z-index: 1000;
+}
+
+/* REVIEW FORM */
+#panel input {
+  width: 100%;
+  margin: 6px 0;
+  padding: 8px;
+  background: #151f30;
+  border-radius: 6px;
+  color: white;
+}
+
+button {
+  padding: 7px 12px;
+  border: none;
+  border-radius: 6px;
+  background: #1f80ff;
+  color: white;
+  cursor: pointer;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+/* REVIEW ITEM */
+.review {
+  border-bottom: 1px solid #333;
+  padding: 10px 0;
+}
+
+.review small {
+  color: #aaa;
+}
+
+.close-btn {
+  background: #444;
+  margin-bottom: 10px;
+}
+
+/* RESPONSIVE */
+@media (max-width: 900px) {
+  .navbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  form {
+    width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  #section {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  #panel {
+    width: 100%;
+  }
+}
+
+@media (max-width: 400px) {
+  #section {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<!-- NAVBAR -->
+<div class="navbar">
+  <a href="#">Movies Site</a>
+  <div class="search-container">
+    <form id="form">
+      <input id="query" placeholder="Search movies...">
+    </form>
+  </div>
+</div>
+
+<!-- MOVIES -->
+<section id="section"></section>
+
+<!-- REVIEW PANEL -->
+<div id="panel">
+  <button class="close-btn" onclick="closePanel()">Close</button>
+  <h2 id="movieTitle"></h2>
+
+  <input id="reviewer" placeholder="Your Name">
+  <input id="rating" placeholder="Rating (1-5)">
+  <input id="comment" placeholder="Comment">
+  <button class="submit" onclick="submitReview()">Save Review</button>
+
+  <h3>Review History</h3>
+  <div id="reviews"></div>
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+
+const APILINK =
+  "https://api.themoviedb.org/3/discover/movie?sort_by=popularity.desc&api_key=35d64fb5c5b72b9020343d99e111b6c1&page=1";
+
+const SEARCHAPI =
+  "https://api.themoviedb.org/3/search/movie?api_key=35d64fb5c5b72b9020343d99e111b6c1&query=";
+
+const IMG_PATH = "https://image.tmdb.org/t/p/w500";
+const BACKEND = "http://localhost:5000/api";
+
+/* ================= STATE ================= */
+
+const mainsection = document.getElementById("section");
+const form = document.getElementById("form");
+const search = document.getElementById("query");
+
+//these are state variables for mongodb dbid and reviewid
+let currentMovieDbId = null;
+let editingReviewId = null;
+
+/* ================= INITIAL LOAD ================= */
+
+loadMovies(APILINK);
+
+/* ================= FUNCTIONS ================= */
+
+// LOAD MOVIES (FIXED SEARCH)
+function loadMovies(url) {
+  mainsection.innerHTML = "";
+
+  fetch(url)
+    .then(res => res.json())
+    .then(data => {
+      if (!data.results || data.results.length === 0) {
+        mainsection.innerHTML = "<h2>No results found</h2>";
+        return;
+      }
+
+      data.results.forEach(movie => {
+        if (!movie.poster_path) return;
+
+        const card = document.createElement("div");
+        card.className = "card";
+
+        card.innerHTML = `
+          <img class="thumbnail" src="${IMG_PATH + movie.poster_path}">
+          <h3>${movie.title}</h3>`;
+
+        card.onclick = () => openMovie(movie);
+        mainsection.appendChild(card);
+      });
+    })
+    .catch(() => {
+      mainsection.innerHTML = "<h2>Error loading movies</h2>";
+    });
+}
+
+// SEARCH
+form.addEventListener("submit", e => {
+  e.preventDefault();
+  const term = search.value.trim();
+  if (term) {
+    loadMovies(SEARCHAPI + encodeURIComponent(term));
+    search.value = "";
+  }
+});
+
+// OPEN MOVIE & SAVE TO DB
+function openMovie(movie) {
+  fetch(BACKEND + "/movies/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      tmdbId: movie.id,
+      title: movie.title,
+      poster: movie.poster_path
+    })
+  })
+  .then(res => res.json())
+  .then(dbMovie => {
+    currentMovieDbId = dbMovie._id;
+    movieTitle.innerText = dbMovie.title;
+    panel.style.display = "block";
+    loadReviews();
+  });
+}
+
+// LOAD REVIEWS
+function loadReviews() {
+  fetch(`${BACKEND}/reviews/${currentMovieDbId}`)
+    .then(res => res.json())
+    .then(data => {
+      reviews.innerHTML = "";
+
+      if (data.length === 0) {
+        reviews.innerHTML = "<p>No reviews yet</p>";
+        return;
+      }
+
+      data.forEach(r => {
+        reviews.innerHTML += `
+          <div class="review">
+            <b>${r.reviewer}</b> (${r.rating}/5)
+            ${r.edited ? "<i>(edited)</i>" : ""}
+            <p>${r.comment}</p>
+            <small>${new Date(r.createdAt).toLocaleString()}</small><br>
+            <button onclick="editReview('${r._id}','${r.comment}','${r.rating}')">Edit</button>
+            <button onclick="deleteReview('${r._id}')">Delete</button>
+          </div>
+        `;
+      });
+    });
+}
+
+// ADD / EDIT REVIEW
+function submitReview() {
+  const method = editingReviewId ? "PUT" : "POST";
+  const url = editingReviewId
+    ? `${BACKEND}/reviews/${editingReviewId}`
+    : `${BACKEND}/reviews`;
+
+  fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      movieId: currentMovieDbId,
+      reviewer: reviewer.value,
+      rating: rating.value,
+      comment: comment.value
+    })
+  }).then(() => {
+    reviewer.value = rating.value = comment.value = "";
+    editingReviewId = null;
+    loadReviews();
+  });
+}
+
+// EDIT REVIEW
+function editReview(id, commentText, rate) {
+  editingReviewId = id;
+  comment.value = commentText;
+  rating.value = rate;
+}
+
+// DELETE REVIEW
+function deleteReview(id) {
+  fetch(`${BACKEND}/reviews/${id}`, { method: "DELETE" })
+    .then(loadReviews);
+}
+
+// CLOSE PANEL
+function closePanel() {
+  panel.style.display = "none";
+}
+</script>
+
+</body>
+</html>
